@@ -43,19 +43,27 @@ uv run python -m mta.integrations.harbor.daytona --delete   # ... and delete the
 ```
 
 Harbor's own `-e daytona` runs single-container tasks directly and
-docker-compose tasks with Docker-in-Docker. Its sandboxes never auto-stop, so
-a killed run leaves them billing; MTA's subclass stops (and deletes) a sandbox
-after 60 idle minutes (`--ek auto_stop_interval_mins=N` to change it).
+docker-compose tasks with Docker-in-Docker. MTA's subclass adds three things:
+sandboxes stop (and are deleted) after 60 idle minutes, so a killed run does not
+leave them billing (`--ek auto_stop_interval_mins=N`); sandboxes Harbor loses
+track of (a failed build, a retried create) are deleted when the trial ends; and
+resource floors (below).
 
 - **Resources.** Tasks that set no `cpus`/`memory_mb`/`storage_mb` get
   Daytona's default sandbox: 1 vCPU, 1 GiB RAM, 3 GiB disk, as hard limits.
-  `--override-cpus`, `--override-memory-mb` and `--override-storage-mb`
-  raise them, but apply to every task. Your account tier caps the size of one
-  sandbox and the total across concurrent sandboxes, which bounds `-n`.
+  Several Terminal-Bench 1.0 tasks need more (their reference solutions are
+  killed for memory, run out of disk or time out). Raise the defaults with
+  `--ek min_cpus=2 --ek min_memory_mb=4096 --ek min_storage_mb=10240`; unlike
+  `--override-*`, a floor never lowers what a task asks for. Your account tier
+  caps one sandbox (Tier 1: 4 vCPU, 8 GiB, 10 GiB) and the total across running
+  sandboxes (Tier 1: 10 vCPU, 10 GiB, 30 GiB), so choose `-n` to fit; a task
+  that asks for more than is free waits for capacity and can hit its start
+  timeout.
 - **Network.** Lower Daytona tiers restrict sandbox internet access to an
   allowlist of common services. Package registries (PyPI, npm, apt, Go, crates,
   Docker Hub, ghcr.io), GitHub, Hugging Face and `astral.sh` (used by the
-  verifiers to install `uv`) are reachable; arbitrary websites are not. Tasks
+  verifiers to install `uv`) are reachable; conda-forge, kernel.org, busybox.net,
+  sqlite.org and arbitrary websites are not. Tasks
   that fetch from elsewhere fail for that reason alone, so run the oracle on
   Daytona before comparing scores with other backends.
 
