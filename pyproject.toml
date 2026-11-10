@@ -13,6 +13,8 @@ dependencies = ["openai>=1.40"]
 harbor = ["harbor==0.25.0", "pyyaml"]
 # Harbor plus Modal cloud sandboxes (`-e mta.integrations.harbor.modal_env:ModalEnvironment`).
 modal = ["harbor[modal]==0.25.0", "pyyaml"]
+# Harbor plus Daytona cloud sandboxes (`-e mta.integrations.harbor.daytona:DaytonaEnvironment`).
+daytona = ["harbor[daytona]==0.25.0", "pyyaml"]
 
 [project.urls]
 Repository = "https://github.com/Eric2i/minimal-terminal-agent"

@@ -27,10 +27,37 @@ and Harbor's verdict to `.../verifier/reward.txt`. `-m <model>` overrides
 
 ## Cloud sandboxes
 
-With `uv sync --extra modal` and Modal credentials, add
+**Modal.** With `uv sync --extra modal` and Modal credentials, add
 `-e mta.integrations.harbor.modal_env:ModalEnvironment` to run each task in a
 [Modal](https://modal.com) sandbox. This shim fixes a Harbor 0.25.0 issue where
 command output that is not valid UTF-8 crashed the episode.
+
+**Daytona.** With `uv sync --extra daytona` and `DAYTONA_API_KEY` in `.env`:
+
+```bash
+uv run harbor run -p data/tb1/tasks --env-file .env \
+    -e mta.integrations.harbor.daytona:DaytonaEnvironment \
+    -a mta.integrations.harbor:MTAAgent -n 4 -o jobs/mta-daytona
+uv run python -m mta.integrations.harbor.daytona            # list leftover sandboxes
+uv run python -m mta.integrations.harbor.daytona --delete   # ... and delete them
+```
+
+Harbor's own `-e daytona` runs single-container tasks directly and
+docker-compose tasks with Docker-in-Docker. Its sandboxes never auto-stop, so
+a killed run leaves them billing; MTA's subclass stops (and deletes) a sandbox
+after 60 idle minutes (`--ek auto_stop_interval_mins=N` to change it).
+
+- **Resources.** Tasks that set no `cpus`/`memory_mb`/`storage_mb` get
+  Daytona's default sandbox: 1 vCPU, 1 GiB RAM, 3 GiB disk, as hard limits.
+  `--override-cpus`, `--override-memory-mb` and `--override-storage-mb`
+  raise them, but apply to every task. Your account tier caps the size of one
+  sandbox and the total across concurrent sandboxes, which bounds `-n`.
+- **Network.** Lower Daytona tiers restrict sandbox internet access to an
+  allowlist of common services. Package registries (PyPI, npm, apt, Go, crates,
+  Docker Hub, ghcr.io), GitHub, Hugging Face and `astral.sh` (used by the
+  verifiers to install `uv`) are reachable; arbitrary websites are not. Tasks
+  that fetch from elsewhere fail for that reason alone, so run the oracle on
+  Daytona before comparing scores with other backends.
 
 ## Before reporting scores
 

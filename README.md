@@ -16,7 +16,7 @@ docstrings).
 
 ```bash
 git clone https://github.com/Eric2i/minimal-terminal-agent && cd minimal-terminal-agent
-uv sync                    # core only; add --extra harbor (or --extra modal) for benchmarks
+uv sync                    # core only; add --extra harbor (or --extra modal / daytona) for benchmarks
 cp .env.example .env       # then set MTA_BASE_URL and MTA_MODEL (never commit .env)
 ```
 
