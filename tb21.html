@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MTA on Terminal-Bench 2.1</title>
+<meta name="description" content="Per-task results of MTA with DeepSeek-V4.1-Flash on Terminal-Bench 2.1.">
+<style>
+  /* Layout: one centered column; summary tiles, then two charts side by side, then the full task table. */
+  :root {
+    --bg: #f7f8f7; --panel: #ffffff; --fg: #1c1f1e; --muted: #5d6462; --line: #e1e4e2;
+    --ok: #2d7a50; --warn: #b26b00; --bad: #c2362f; --chart-muted: #c6cbc8; --grid: #e9ecea;
+    --popover: #ffffff; --shadow: 0 6px 20px rgb(0 0 0 / 0.12);
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --serif: "Iowan Old Style", "Charter", "Georgia", "Times New Roman", serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --fs-caption: 0.8125rem; --fs-body: 1rem; --fs-heading: 1.125rem; --fs-title: 2rem;
+    --gap-xs: 4px; --gap-sm: 8px; --gap-md: 16px; --gap-xl: 32px;
+    --pad-sm: 8px; --pad-md: 12px; --pad-lg: 20px; --radius: 8px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141716; --panel: #1c201f; --fg: #e8ebea; --muted: #a2aaa7; --line: #2f3533;
+      --ok: #4fbf82; --warn: #e0a23a; --bad: #f06a62; --chart-muted: #4a514e; --grid: #262b29;
+      --popover: #232827; --shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141716; --panel: #1c201f; --fg: #e8ebea; --muted: #a2aaa7; --line: #2f3533;
+    --ok: #4fbf82; --warn: #e0a23a; --bad: #f06a62; --chart-muted: #4a514e; --grid: #262b29;
+    --popover: #232827; --shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--sans); }
+  .tb { max-width: 1120px; margin: 0 auto; padding-block: 40px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid; gap: var(--gap-xl); }
+  .tb h2 { font-size: var(--fs-heading); font-weight: 600; margin: 0; text-wrap: balance; }
+  .tb-head { display: grid; gap: var(--gap-sm); max-width: 72ch; }
+  .tb-back { font-size: var(--fs-caption); color: var(--muted); text-decoration: none; }
+  .tb-back:hover { color: var(--fg); text-decoration: underline; }
+  .tb-title { font-family: var(--serif); font-weight: 400; font-size: var(--fs-title); line-height: 1.15; margin: 0; text-wrap: balance; }
+  .tb-settings { margin: 0; color: var(--muted); font-size: var(--fs-caption); letter-spacing: 0.01em; }
+  .tb-takeaway { margin: 0; font-size: var(--fs-body); line-height: 1.55; }
+  .tb-takeaway b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .tb-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--gap-md); }
+  .tb-tile { display: grid; gap: var(--gap-xs); align-content: start; min-width: 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad-lg); }
+  .tb-tile-label { font-size: var(--fs-caption); color: var(--muted); }
+  .tb-big { font-family: var(--serif); font-weight: 400; font-size: 2.6rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tb-sub { font-size: var(--fs-caption); color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.45; }
+
+  .tb-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: var(--gap-xl); align-items: start; }
+  .tb-block { display: grid; gap: var(--gap-md); min-width: 0; }
+  .tb-note { margin: 0; font-size: var(--fs-caption); color: var(--muted); line-height: 1.45; }
+
+  .tb-waffle { position: relative; min-height: 9rem; }
+  .tb-waffle svg { display: block; max-width: 100%; }
+  .tb-waffle rect.is-hover { stroke: var(--fg); stroke-width: 1.5px; }
+  .tb-legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--gap-xs) var(--gap-md); font-size: var(--fs-caption); }
+  .tb-legend li { display: flex; align-items: center; gap: var(--gap-sm); min-width: 0; }
+  .tb-legend b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tb-sw { width: 0.8rem; height: 0.8rem; border-radius: 2px; flex: none; }
+
+  .tb-c-pass { fill: var(--ok); } .tb-sw-pass { background: var(--ok); }
+  .tb-c-timeout { fill: var(--warn); } .tb-sw-timeout { background: var(--warn); }
+  .tb-c-wrong { fill: var(--bad); } .tb-sw-wrong { background: var(--bad); }
+  .tb-c-unscored { fill: var(--chart-muted); } .tb-sw-unscored { background: var(--chart-muted); }
+
+  .tb-diff { position: relative; display: grid; gap: var(--gap-md); min-height: 7rem; }
+  .tb-drow { display: grid; grid-template-columns: 4.5rem 1fr auto; align-items: center; gap: var(--gap-sm); }
+  .tb-dlabel { font-size: var(--fs-caption); }
+  .tb-dbar { display: flex; height: 1.1rem; border-radius: 3px; overflow: hidden; background: var(--grid); }
+  .tb-dbar span { display: block; height: 100%; }
+  .tb-dval { font-size: var(--fs-caption); font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  .tb-dval b { color: var(--fg); font-weight: 600; }
+
+  .tb-tip { position: absolute; z-index: 3; pointer-events: none; max-width: 17rem;
+    background: var(--popover); border: 1px solid var(--line); box-shadow: var(--shadow);
+    border-radius: var(--radius); padding: var(--pad-sm) var(--pad-md); font-size: var(--fs-caption); line-height: 1.45; }
+  .tb-tip strong { display: block; font-weight: 600; overflow-wrap: anywhere; }
+  .tb-tip span { color: var(--muted); }
+
+  .tb-tablehead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--gap-sm) var(--gap-md); }
+  .tb-filter { display: flex; align-items: center; gap: var(--gap-sm); font-size: var(--fs-caption); color: var(--muted); }
+  .tb-filter select { font: inherit; color: var(--fg); background-color: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  .tb-filter select:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+  .tb-tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+  .tb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+  .tb-table th { text-align: left; font-weight: 600; color: var(--muted); white-space: nowrap;
+    padding: var(--pad-sm) var(--pad-md); border-bottom: 1px solid var(--line); }
+  .tb-table td { padding: var(--pad-sm) var(--pad-md); border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tb-table tbody tr:last-child td { border-bottom: 0; }
+  .tb-table .num { text-align: right; }
+  .tb-table td.tb-task { font-family: var(--mono); font-size: 0.95em; white-space: nowrap; }
+  .tb-table td.tb-wrap { min-width: 13rem; max-width: 26rem; color: var(--muted); line-height: 1.45; }
+  .tb-table td.tb-cat { color: var(--muted); }
+  .tb-table td.tb-muted { color: var(--muted); white-space: nowrap; }
+  .tb-pill { display: inline-flex; align-items: center; gap: 0.4em; white-space: nowrap; padding: 0.1em 0.55em; border-radius: 999px; }
+  .tb-pill::before { content: ""; width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; }
+  .tb-pill-pass { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+  .tb-pill-wrong { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+  .tb-pill-timeout { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .tb-pill-unscored { background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted); }
+  .tb-pill span { color: var(--fg); }
+  .tb-empty { padding: var(--pad-lg); color: var(--muted); }
+
+  .tb-details { font-size: var(--fs-caption); line-height: 1.55; max-width: 72ch; }
+  .tb-details summary { cursor: pointer; font-weight: 600; }
+  .tb-details ul { margin: var(--gap-sm) 0 0; padding-left: 1.2rem; display: grid; gap: var(--gap-xs); color: var(--muted); }
+  .tb-details code { font-family: var(--mono); font-size: 0.95em; }
+</style>
+</head>
+<body>
+<div class="tb">
+  <header class="tb-head" id="summary">
+    <a class="tb-back" href="./">← MTA: Minimal Terminal Agent</a>
+    <h1 class="tb-title">MTA on Terminal-Bench 2.1</h1>
+    <p class="tb-settings">DeepSeek-V4.1-Flash · reasoning effort max · temperature 1.0 · top_p 0.95 · up to 500 steps · 180 s per command · one attempt per task</p>
+    <p class="tb-takeaway">MTA passed <b data-stat="passed">—</b> of <b data-stat="scored">—</b> scored tasks (<b data-stat="rate" data-fmt="pct">—</b>). Of the <b data-stat="failed">—</b> it failed, <b data-stat="wrong">—</b> were wrong answers and <b data-stat="timeout">—</b> ran out of time.</p>
+  </header>
+
+  <section class="tb-tiles" id="scores">
+    <div class="tb-tile">
+      <div class="tb-tile-label">Pass rate</div>
+      <div class="tb-big" data-stat="rate" data-fmt="pct">—</div>
+      <div class="tb-sub"><span data-stat="passed">—</span> of <span data-stat="scored">—</span> scored tasks passed</div>
+    </div>
+    <div class="tb-tile">
+      <div class="tb-tile-label">Failed</div>
+      <div class="tb-big" data-stat="failed">—</div>
+      <div class="tb-sub"><span data-stat="wrong">—</span> wrong answers, <span data-stat="timeout">—</span> ran out of time</div>
+    </div>
+    <div class="tb-tile">
+      <div class="tb-tile-label">Tasks scored</div>
+      <div class="tb-big"><span data-stat="scored">—</span><span class="tb-sub"> of <span data-stat="total">—</span></span></div>
+      <div class="tb-sub"><span data-stat="not_scored">—</span> not scored because their reference solution fails its own tests</div>
+    </div>
+  </section>
+
+  <section class="tb-pair">
+    <div class="tb-block" id="every-task">
+      <h2>Every task at a glance</h2>
+      <div class="tb-waffle" id="waffle"></div>
+      <ul class="tb-legend">
+        <li><span class="tb-sw tb-sw-pass"></span>Passed <b data-count="pass">—</b></li>
+        <li><span class="tb-sw tb-sw-wrong"></span>Wrong answer <b data-count="wrong">—</b></li>
+        <li><span class="tb-sw tb-sw-timeout"></span>Ran out of time <b data-count="timeout">—</b></li>
+        <li><span class="tb-sw tb-sw-unscored"></span>Not scored <b data-count="unscored">—</b></li>
+      </ul>
+    </div>
+    <div class="tb-block" id="by-difficulty">
+      <h2>Passed by difficulty</h2>
+      <div class="tb-diff" id="difficulty" role="img" aria-label="Share of scored tasks passed at each difficulty level"></div>
+      <p class="tb-note">Difficulty is the label each task carries in Terminal-Bench 2.1. Bars count scored tasks only.</p>
+    </div>
+  </section>
+
+  <section class="tb-block" id="tasks">
+    <div class="tb-tablehead">
+      <h2>All tasks</h2>
+      <label class="tb-filter" for="tb-filter">Show
+        <select id="tb-filter">
+          <option value="all">All tasks</option>
+          <option value="pass">Passed</option>
+          <option value="fail">Failed</option>
+          <option value="unscored">Not scored</option>
+        </select>
+      </label>
+    </div>
+    <div class="tb-tablewrap">
+      <table class="tb-table">
+        <thead>
+          <tr>
+            <th>Task</th><th>Result</th><th>Ran on</th>
+            <th class="num">Steps</th><th class="num">Minutes used</th><th class="num">Limit (min)</th>
+            <th>Difficulty</th><th>Category</th><th>Note</th>
+          </tr>
+        </thead>
+        <tbody id="task-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <details class="tb-details" id="method">
+    <summary>How the score is counted</summary>
+    <ul>
+      <li>Only tasks whose reference solution passes its own tests are scored. The others are listed as Not scored, with the reason.</li>
+      <li>Each task has one result that counts. Tasks that ran out of time on their first attempt were run once more on the PC with 3× their agent time, and that later result counts.</li>
+      <li>Most tasks ran on Daytona Tier 1 sandboxes. Tasks that need 8 GiB of memory, or a host the Tier 1 network blocks, ran on a WSL2 PC with local Docker.</li>
+      <li>Trials stopped because the DeepSeek account ran out of credit don't count as attempts.</li>
+      <li>merge-diff-arc-agi-task and regex-log failed because of the harness: the 180 s command limit cut off an <code>apt-get install</code>, which then broke the test's own install.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+  // One row per task, generated from the Harbor job folders (see analysis/tb21_tasks.csv).
+  const TASKS = [
+    {"task": "adaptive-rejection-sampler", "category": "scientific-computing", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 181, "agent_minutes": 38.1, "time_limit_minutes": 45, "input_mtokens": 35.99, "output_ktokens": 279.2, "note": null},
+    {"task": "bn-fit-modify", "category": "scientific-computing", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 173, "agent_minutes": 40.7, "time_limit_minutes": 60, "input_mtokens": 25.44, "output_ktokens": 235.2, "note": null},
+    {"task": "break-filter-js-from-html", "category": "security", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 8, "agent_minutes": 1.1, "time_limit_minutes": 20, "input_mtokens": 0.06, "output_ktokens": 9.1, "note": null},
+    {"task": "build-cython-ext", "category": "debugging", "difficulty": "medium", "result": "not scored", "outcome": "Not scored", "run": null, "steps": null, "agent_minutes": null, "time_limit_minutes": 15, "input_mtokens": null, "output_ktokens": null, "note": "Reference solution fails: 1 of 18 upstream pyknotid tests fails"},
+    {"task": "build-pmars", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 49, "agent_minutes": 4.9, "time_limit_minutes": 15, "input_mtokens": 1.98, "output_ktokens": 31.6, "note": null},
+    {"task": "build-pov-ray", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 74, "agent_minutes": 11.1, "time_limit_minutes": 200, "input_mtokens": 3.33, "output_ktokens": 27.3, "note": null},
+    {"task": "caffe-cifar-10", "category": "machine-learning", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 64, "agent_minutes": 27.6, "time_limit_minutes": 60, "input_mtokens": 2.5, "output_ktokens": 25.8, "note": null},
+    {"task": "cancel-async-tasks", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 74, "agent_minutes": 11.9, "time_limit_minutes": 15, "input_mtokens": 3.45, "output_ktokens": 67.5, "note": null},
+    {"task": "chess-best-move", "category": "games", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 54, "agent_minutes": 15.0, "time_limit_minutes": 15, "input_mtokens": 1.73, "output_ktokens": 54.5, "note": null},
+    {"task": "circuit-fibsqrt", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 81, "agent_minutes": 55.4, "time_limit_minutes": 60, "input_mtokens": 5.85, "output_ktokens": 99.5, "note": null},
+    {"task": "cobol-modernization", "category": "software-engineering", "difficulty": "easy", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 86, "agent_minutes": 14.9, "time_limit_minutes": 15, "input_mtokens": 6.46, "output_ktokens": 105.7, "note": null},
+    {"task": "code-from-image", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 40, "agent_minutes": 5.2, "time_limit_minutes": 20, "input_mtokens": 1.02, "output_ktokens": 34.2, "note": null},
+    {"task": "compile-compcert", "category": "system-administration", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 81, "agent_minutes": 17.6, "time_limit_minutes": 40, "input_mtokens": 3.43, "output_ktokens": 27.9, "note": null},
+    {"task": "configure-git-webserver", "category": "system-administration", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 42, "agent_minutes": 7.2, "time_limit_minutes": 15, "input_mtokens": 1.2, "output_ktokens": 30.4, "note": null},
+    {"task": "constraints-scheduling", "category": "personal-assistant", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 6, "agent_minutes": 0.5, "time_limit_minutes": 20, "input_mtokens": 0.04, "output_ktokens": 6.6, "note": null},
+    {"task": "count-dataset-tokens", "category": "model-training", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 52, "agent_minutes": 6.7, "time_limit_minutes": 15, "input_mtokens": 2.37, "output_ktokens": 25.8, "note": null},
+    {"task": "crack-7z-hash", "category": "security", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 11, "agent_minutes": 2.3, "time_limit_minutes": 30, "input_mtokens": 0.07, "output_ktokens": 1.4, "note": null},
+    {"task": "custom-memory-heap-crash", "category": "debugging", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 56, "agent_minutes": 13.0, "time_limit_minutes": 30, "input_mtokens": 3.16, "output_ktokens": 55.0, "note": null},
+    {"task": "db-wal-recovery", "category": "file-operations", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 19, "agent_minutes": 1.6, "time_limit_minutes": 15, "input_mtokens": 0.23, "output_ktokens": 14.8, "note": null},
+    {"task": "distribution-search", "category": "machine-learning", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 11, "agent_minutes": 1.9, "time_limit_minutes": 60, "input_mtokens": 0.13, "output_ktokens": 16.9, "note": null},
+    {"task": "dna-assembly", "category": "scientific-computing", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 120, "agent_minutes": 21.3, "time_limit_minutes": 30, "input_mtokens": 13.6, "output_ktokens": 155.5, "note": null},
+    {"task": "dna-insert", "category": "scientific-computing", "difficulty": "medium", "result": "fail", "outcome": "Wrong answer", "run": "Daytona", "steps": 69, "agent_minutes": 15.4, "time_limit_minutes": 30, "input_mtokens": 5.7, "output_ktokens": 152.1, "note": null},
+    {"task": "extract-elf", "category": "file-operations", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 28, "agent_minutes": 2.6, "time_limit_minutes": 15, "input_mtokens": 0.87, "output_ktokens": 12.6, "note": null},
+    {"task": "extract-moves-from-video", "category": "file-operations", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 183, "agent_minutes": 54.0, "time_limit_minutes": 90, "input_mtokens": 28.96, "output_ktokens": 208.4, "note": null},
+    {"task": "feal-differential-cryptanalysis", "category": "mathematics", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 33, "agent_minutes": 7.5, "time_limit_minutes": 30, "input_mtokens": 1.59, "output_ktokens": 59.7, "note": null},
+    {"task": "feal-linear-cryptanalysis", "category": "mathematics", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 15, "agent_minutes": 4.7, "time_limit_minutes": 30, "input_mtokens": 0.21, "output_ktokens": 15.8, "note": null},
+    {"task": "filter-js-from-html", "category": "security", "difficulty": "medium", "result": "fail", "outcome": "Wrong answer", "run": "PC", "steps": 246, "agent_minutes": 67.5, "time_limit_minutes": 90, "input_mtokens": 63.82, "output_ktokens": 416.3, "note": null},
+    {"task": "financial-document-processor", "category": "data-processing", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 39, "agent_minutes": 9.3, "time_limit_minutes": 20, "input_mtokens": 1.04, "output_ktokens": 31.1, "note": null},
+    {"task": "fix-code-vulnerability", "category": "security", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 17, "agent_minutes": 1.2, "time_limit_minutes": 15, "input_mtokens": 0.23, "output_ktokens": 6.4, "note": null},
+    {"task": "fix-git", "category": "software-engineering", "difficulty": "easy", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 23, "agent_minutes": 1.5, "time_limit_minutes": 15, "input_mtokens": 0.29, "output_ktokens": 12.3, "note": null},
+    {"task": "fix-ocaml-gc", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 70, "agent_minutes": 21.3, "time_limit_minutes": 60, "input_mtokens": 3.94, "output_ktokens": 17.1, "note": null},
+    {"task": "gcode-to-text", "category": "file-operations", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 65, "agent_minutes": 8.8, "time_limit_minutes": 45, "input_mtokens": 4.35, "output_ktokens": 86.7, "note": null},
+    {"task": "git-leak-recovery", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 9, "agent_minutes": 0.7, "time_limit_minutes": 15, "input_mtokens": 0.05, "output_ktokens": 6.7, "note": null},
+    {"task": "git-multibranch", "category": "system-administration", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 39, "agent_minutes": 8.1, "time_limit_minutes": 15, "input_mtokens": 1.33, "output_ktokens": 47.4, "note": null},
+    {"task": "gpt2-codegolf", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 125, "agent_minutes": 25.4, "time_limit_minutes": 45, "input_mtokens": 11.49, "output_ktokens": 109.7, "note": null},
+    {"task": "headless-terminal", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 52, "agent_minutes": 11.1, "time_limit_minutes": 45, "input_mtokens": 3.03, "output_ktokens": 77.3, "note": null},
+    {"task": "hf-model-inference", "category": "data-science", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 4, "agent_minutes": 15.0, "time_limit_minutes": 15, "input_mtokens": 0.01, "output_ktokens": 2.5, "note": null},
+    {"task": "install-windows-3.11", "category": "system-administration", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 247, "agent_minutes": 47.4, "time_limit_minutes": 60, "input_mtokens": 33.85, "output_ktokens": 151.0, "note": null},
+    {"task": "kv-store-grpc", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 5, "agent_minutes": 15.0, "time_limit_minutes": 15, "input_mtokens": 0.01, "output_ktokens": 2.6, "note": null},
+    {"task": "large-scale-text-editing", "category": "file-operations", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 43, "agent_minutes": 15.8, "time_limit_minutes": 60, "input_mtokens": 1.48, "output_ktokens": 64.5, "note": null},
+    {"task": "largest-eigenval", "category": "mathematics", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 83, "agent_minutes": 15.0, "time_limit_minutes": 15, "input_mtokens": 7.21, "output_ktokens": 144.0, "note": null},
+    {"task": "llm-inference-batching-scheduler", "category": "machine-learning", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 25, "agent_minutes": 6.9, "time_limit_minutes": 30, "input_mtokens": 1.48, "output_ktokens": 77.9, "note": null},
+    {"task": "log-summary-date-ranges", "category": "data-processing", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 8, "agent_minutes": 0.4, "time_limit_minutes": 15, "input_mtokens": 0.05, "output_ktokens": 2.8, "note": null},
+    {"task": "mailman", "category": "system-administration", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 200, "agent_minutes": 27.8, "time_limit_minutes": 90, "input_mtokens": 26.42, "output_ktokens": 158.8, "note": null},
+    {"task": "make-doom-for-mips", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 237, "agent_minutes": 39.1, "time_limit_minutes": 45, "input_mtokens": 47.3, "output_ktokens": 191.8, "note": null},
+    {"task": "make-mips-interpreter", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 167, "agent_minutes": 24.5, "time_limit_minutes": 30, "input_mtokens": 37.82, "output_ktokens": 170.6, "note": null},
+    {"task": "mcmc-sampling-stan", "category": "data-science", "difficulty": "hard", "result": "not scored", "outcome": "Not scored", "run": null, "steps": null, "agent_minutes": null, "time_limit_minutes": 30, "input_mtokens": null, "output_ktokens": null, "note": "Reference solution fails: current RcppParallel needs cmake, which the image lacks"},
+    {"task": "merge-diff-arc-agi-task", "category": "debugging", "difficulty": "medium", "result": "fail", "outcome": "Wrong answer", "run": "Daytona", "steps": 43, "agent_minutes": 7.3, "time_limit_minutes": 15, "input_mtokens": 1.16, "output_ktokens": 26.1, "note": "The 180 s command limit cut off apt-get install python3, which broke the test's own install"},
+    {"task": "model-extraction-relu-logits", "category": "mathematics", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 42, "agent_minutes": 13.6, "time_limit_minutes": 15, "input_mtokens": 2.56, "output_ktokens": 74.9, "note": null},
+    {"task": "modernize-scientific-stack", "category": "scientific-computing", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 10, "agent_minutes": 1.2, "time_limit_minutes": 10, "input_mtokens": 0.08, "output_ktokens": 9.4, "note": null},
+    {"task": "mteb-leaderboard", "category": "data-science", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 112, "agent_minutes": 18.9, "time_limit_minutes": 60, "input_mtokens": 8.68, "output_ktokens": 49.1, "note": null},
+    {"task": "mteb-retrieve", "category": "data-science", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 24, "agent_minutes": 6.4, "time_limit_minutes": 30, "input_mtokens": 0.29, "output_ktokens": 9.1, "note": null},
+    {"task": "multi-source-data-merger", "category": "data-processing", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 17, "agent_minutes": 8.0, "time_limit_minutes": 15, "input_mtokens": 0.29, "output_ktokens": 19.1, "note": null},
+    {"task": "nginx-request-logging", "category": "system-administration", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 11, "agent_minutes": 0.6, "time_limit_minutes": 15, "input_mtokens": 0.07, "output_ktokens": 5.3, "note": null},
+    {"task": "openssl-selfsigned-cert", "category": "security", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 12, "agent_minutes": 1.2, "time_limit_minutes": 15, "input_mtokens": 0.08, "output_ktokens": 11.8, "note": null},
+    {"task": "overfull-hbox", "category": "debugging", "difficulty": "easy", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 27, "agent_minutes": 2.0, "time_limit_minutes": 38, "input_mtokens": 0.43, "output_ktokens": 14.9, "note": null},
+    {"task": "password-recovery", "category": "security", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 29, "agent_minutes": 12.1, "time_limit_minutes": 15, "input_mtokens": 1.07, "output_ktokens": 23.8, "note": null},
+    {"task": "path-tracing", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 39, "agent_minutes": 3.5, "time_limit_minutes": 30, "input_mtokens": 2.03, "output_ktokens": 20.2, "note": null},
+    {"task": "path-tracing-reverse", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 79, "agent_minutes": 16.7, "time_limit_minutes": 30, "input_mtokens": 8.67, "output_ktokens": 90.3, "note": null},
+    {"task": "polyglot-c-py", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 36, "agent_minutes": 9.5, "time_limit_minutes": 15, "input_mtokens": 0.75, "output_ktokens": 28.3, "note": null},
+    {"task": "polyglot-rust-c", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 35, "agent_minutes": 5.8, "time_limit_minutes": 15, "input_mtokens": 1.19, "output_ktokens": 47.1, "note": null},
+    {"task": "portfolio-optimization", "category": "optimization", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 19, "agent_minutes": 5.0, "time_limit_minutes": 60, "input_mtokens": 0.26, "output_ktokens": 18.9, "note": null},
+    {"task": "protein-assembly", "category": "scientific-computing", "difficulty": "hard", "result": "not scored", "outcome": "Not scored", "run": null, "steps": null, "agent_minutes": null, "time_limit_minutes": 30, "input_mtokens": null, "output_ktokens": null, "note": "Reference solution fails: dnachisel NoSolutionError"},
+    {"task": "prove-plus-comm", "category": "software-engineering", "difficulty": "easy", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 6, "agent_minutes": 0.3, "time_limit_minutes": 15, "input_mtokens": 0.02, "output_ktokens": 2.8, "note": null},
+    {"task": "pypi-server", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 4, "agent_minutes": 15.0, "time_limit_minutes": 15, "input_mtokens": 0.01, "output_ktokens": 2.4, "note": null},
+    {"task": "pytorch-model-cli", "category": "model-training", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 53, "agent_minutes": 7.4, "time_limit_minutes": 15, "input_mtokens": 2.07, "output_ktokens": 48.9, "note": null},
+    {"task": "pytorch-model-recovery", "category": "model-training", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 27, "agent_minutes": 4.0, "time_limit_minutes": 45, "input_mtokens": 0.53, "output_ktokens": 22.6, "note": null},
+    {"task": "qemu-alpine-ssh", "category": "system-administration", "difficulty": "medium", "result": "not scored", "outcome": "Not scored", "run": null, "steps": null, "agent_minutes": null, "time_limit_minutes": 15, "input_mtokens": null, "output_ktokens": null, "note": "Reference solution fails: the test's apt-get install curl gets 404 on Debian bullseye-security"},
+    {"task": "qemu-startup", "category": "system-administration", "difficulty": "medium", "result": "not scored", "outcome": "Not scored", "run": null, "steps": null, "agent_minutes": null, "time_limit_minutes": 15, "input_mtokens": null, "output_ktokens": null, "note": "Reference solution fails: the test's apt-get install curl gets 404 on Debian bullseye-security"},
+    {"task": "query-optimize", "category": "data-science", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 65, "agent_minutes": 15.0, "time_limit_minutes": 15, "input_mtokens": 4.34, "output_ktokens": 105.3, "note": null},
+    {"task": "raman-fitting", "category": "scientific-computing", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 67, "agent_minutes": 8.4, "time_limit_minutes": 15, "input_mtokens": 4.9, "output_ktokens": 76.5, "note": null},
+    {"task": "regex-chess", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 81, "agent_minutes": 35.2, "time_limit_minutes": 60, "input_mtokens": 8.83, "output_ktokens": 122.0, "note": null},
+    {"task": "regex-log", "category": "data-processing", "difficulty": "medium", "result": "fail", "outcome": "Wrong answer", "run": "Daytona", "steps": 28, "agent_minutes": 8.3, "time_limit_minutes": 15, "input_mtokens": 0.76, "output_ktokens": 39.2, "note": "The 180 s command limit cut off apt-get install python3, which broke the test's own install"},
+    {"task": "reshard-c4-data", "category": "data-science", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 66, "agent_minutes": 15.4, "time_limit_minutes": 60, "input_mtokens": 4.25, "output_ktokens": 92.3, "note": null},
+    {"task": "rstan-to-pystan", "category": "data-science", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 58, "agent_minutes": 31.1, "time_limit_minutes": 30, "input_mtokens": 1.95, "output_ktokens": 43.4, "note": null},
+    {"task": "sam-cell-seg", "category": "data-science", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 228, "agent_minutes": 96.0, "time_limit_minutes": 120, "input_mtokens": 50.66, "output_ktokens": 260.3, "note": null},
+    {"task": "sanitize-git-repo", "category": "security", "difficulty": "medium", "result": "fail", "outcome": "Wrong answer", "run": "Daytona", "steps": 53, "agent_minutes": 14.6, "time_limit_minutes": 15, "input_mtokens": 2.92, "output_ktokens": 37.8, "note": null},
+    {"task": "schemelike-metacircular-eval", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 115, "agent_minutes": 40.0, "time_limit_minutes": 40, "input_mtokens": 12.13, "output_ktokens": 150.4, "note": null},
+    {"task": "sparql-university", "category": "data-querying", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 69, "agent_minutes": 6.2, "time_limit_minutes": 15, "input_mtokens": 3.17, "output_ktokens": 43.0, "note": null},
+    {"task": "sqlite-db-truncate", "category": "debugging", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 10, "agent_minutes": 0.9, "time_limit_minutes": 15, "input_mtokens": 0.08, "output_ktokens": 10.0, "note": null},
+    {"task": "sqlite-with-gcov", "category": "system-administration", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 43, "agent_minutes": 7.6, "time_limit_minutes": 15, "input_mtokens": 1.23, "output_ktokens": 21.2, "note": null},
+    {"task": "torch-pipeline-parallelism", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 63, "agent_minutes": 15.0, "time_limit_minutes": 15, "input_mtokens": 2.99, "output_ktokens": 48.6, "note": null},
+    {"task": "torch-tensor-parallelism", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "PC", "steps": 49, "agent_minutes": 15.5, "time_limit_minutes": 15, "input_mtokens": 1.99, "output_ktokens": 55.3, "note": null},
+    {"task": "train-fasttext", "category": "model-training", "difficulty": "hard", "result": "fail", "outcome": "Ran out of time", "run": "PC", "steps": 210, "agent_minutes": 186.1, "time_limit_minutes": 180, "input_mtokens": 22.23, "output_ktokens": 143.5, "note": null},
+    {"task": "tune-mjcf", "category": "scientific-computing", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 26, "agent_minutes": 11.1, "time_limit_minutes": 15, "input_mtokens": 0.56, "output_ktokens": 33.0, "note": null},
+    {"task": "video-processing", "category": "video-processing", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 122, "agent_minutes": 42.4, "time_limit_minutes": 60, "input_mtokens": 17.51, "output_ktokens": 130.6, "note": null},
+    {"task": "vulnerable-secret", "category": "security", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 9, "agent_minutes": 3.4, "time_limit_minutes": 15, "input_mtokens": 0.05, "output_ktokens": 2.8, "note": null},
+    {"task": "winning-avg-corewars", "category": "software-engineering", "difficulty": "medium", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 140, "agent_minutes": 43.0, "time_limit_minutes": 60, "input_mtokens": 18.6, "output_ktokens": 151.9, "note": null},
+    {"task": "write-compressor", "category": "software-engineering", "difficulty": "hard", "result": "pass", "outcome": "Passed", "run": "Daytona", "steps": 13, "agent_minutes": 2.1, "time_limit_minutes": 15, "input_mtokens": 0.15, "output_ktokens": 17.4, "note": null}
+  ];
+
+  const groupOf = (t) => t.result === 'not scored' ? 'unscored'
+    : t.result === 'pass' ? 'pass' : t.outcome === 'Ran out of time' ? 'timeout' : 'wrong';
+  const GROUP_LABEL = { pass: 'Passed', wrong: 'Wrong answer', timeout: 'Ran out of time', unscored: 'Not scored' };
+  const ORDER = ['pass', 'wrong', 'timeout', 'unscored'];
+
+  // Summary figures.
+  const scored = TASKS.filter((t) => t.result !== 'not scored');
+  const passed = scored.filter((t) => t.result === 'pass').length;
+  const failedTasks = scored.filter((t) => t.result === 'fail');
+  const timeout = failedTasks.filter((t) => t.outcome === 'Ran out of time').length;
+  const STATS = {
+    passed, scored: scored.length, rate: (100 * passed) / scored.length,
+    failed: failedTasks.length, wrong: failedTasks.length - timeout, timeout,
+    total: TASKS.length, not_scored: TASKS.length - scored.length,
+  };
+  document.querySelectorAll('[data-stat]').forEach((el) => {
+    const v = STATS[el.dataset.stat];
+    el.textContent = el.dataset.fmt === 'pct' ? v.toFixed(1) + '%' : String(v);
+  });
+  document.querySelectorAll('[data-count]').forEach((el) => {
+    el.textContent = String(TASKS.filter((t) => groupOf(t) === el.dataset.count).length);
+  });
+
+  // Tooltips.
+  function showTip(box, tip, evt, nodes) {
+    tip.replaceChildren(...nodes);
+    tip.hidden = false;
+    const r = box.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = evt.clientX - r.left + 12, y = evt.clientY - r.top + 12;
+    if (x + tw > box.clientWidth) x = Math.max(0, evt.clientX - r.left - tw - 12);
+    if (y + th > box.clientHeight + 40) y = Math.max(0, evt.clientY - r.top - th - 12);
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+  function tipLines(title, ...lines) {
+    const s = document.createElement('strong'); s.textContent = title;
+    return [s, ...lines.flatMap((l) => { const e = document.createElement('span'); e.textContent = l; return [document.createElement('br'), e]; })];
+  }
+
+  // One square per task, grouped by result.
+  function drawWaffle(el) {
+    const tasks = [...TASKS].sort((a, b) => ORDER.indexOf(groupOf(a)) - ORDER.indexOf(groupOf(b)) || a.task.localeCompare(b.task));
+    const w = el.clientWidth || 320;
+    const gap = 3;
+    const cols = Math.max(8, Math.min(16, Math.floor((w + gap) / 26)));
+    const size = Math.min(30, (w - gap * (cols - 1)) / cols);
+    const rows = Math.ceil(tasks.length / cols);
+    const W = cols * size + (cols - 1) * gap, H = rows * size + (rows - 1) * gap;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `${tasks.length} tasks, one square each, colored by result`);
+    const tip = document.createElement('div'); tip.className = 'tb-tip'; tip.hidden = true;
+    tasks.forEach((t, i) => {
+      const r = document.createElementNS(ns, 'rect');
+      r.setAttribute('x', (i % cols) * (size + gap)); r.setAttribute('y', Math.floor(i / cols) * (size + gap));
+      r.setAttribute('width', size); r.setAttribute('height', size); r.setAttribute('rx', 2);
+      r.setAttribute('class', 'tb-c-' + groupOf(t));
+      const detail = t.result === 'not scored' ? t.note
+        : `${t.run} · ${t.steps} steps · ${t.agent_minutes} of ${t.time_limit_minutes} min`;
+      const show = (e) => { r.classList.add('is-hover'); showTip(el, tip, e, tipLines(t.task, GROUP_LABEL[groupOf(t)], detail)); };
+      r.addEventListener('pointerenter', show);
+      r.addEventListener('pointermove', show);
+      r.addEventListener('pointerleave', () => { r.classList.remove('is-hover'); tip.hidden = true; });
+      svg.appendChild(r);
+    });
+    el.replaceChildren(svg, tip);
+  }
+
+  // A stacked bar per difficulty level.
+  function drawDifficulty(el) {
+    const tip = document.createElement('div'); tip.className = 'tb-tip'; tip.hidden = true;
+    const parts = [['passed', 'pass', 'passed'], ['wrong', 'wrong', 'wrong answer'], ['timeout', 'timeout', 'ran out of time']];
+    const rowEls = ['easy', 'medium', 'hard'].map((d) => {
+      const s = TASKS.filter((t) => t.difficulty === d && t.result !== 'not scored');
+      const p = s.filter((t) => t.result === 'pass').length;
+      const to = s.filter((t) => t.result === 'fail' && t.outcome === 'Ran out of time').length;
+      return { difficulty: d, scored: s.length, passed: p, wrong: s.length - p - to, timeout: to };
+    }).filter((r) => r.scored > 0).map((r) => {
+      const row = document.createElement('div'); row.className = 'tb-drow';
+      const label = document.createElement('div'); label.className = 'tb-dlabel';
+      label.textContent = r.difficulty[0].toUpperCase() + r.difficulty.slice(1);
+      const bar = document.createElement('div'); bar.className = 'tb-dbar';
+      parts.forEach(([field, cls, words]) => {
+        if (!r[field]) return;
+        const seg = document.createElement('span'); seg.className = 'tb-sw-' + cls;
+        seg.style.width = (100 * r[field] / r.scored) + '%';
+        const show = (e) => showTip(el, tip, e, tipLines(label.textContent, `${r[field]} of ${r.scored} ${words}`));
+        seg.addEventListener('pointerenter', show); seg.addEventListener('pointermove', show);
+        seg.addEventListener('pointerleave', () => { tip.hidden = true; });
+        bar.appendChild(seg);
+      });
+      const val = document.createElement('div'); val.className = 'tb-dval';
+      const b = document.createElement('b'); b.textContent = `${r.passed}/${r.scored}`;
+      val.append(b, ` · ${Math.round(100 * r.passed / r.scored)}%`);
+      row.append(label, bar, val);
+      return row;
+    });
+    el.replaceChildren(...rowEls, tip);
+  }
+
+  // The task table, with a filter.
+  const FILTERS = {
+    all: () => true,
+    pass: (t) => t.result === 'pass',
+    fail: (t) => t.result === 'fail',
+    unscored: (t) => t.result === 'not scored',
+  };
+  const PILL = { Passed: 'pass', 'Wrong answer': 'wrong', 'Ran out of time': 'timeout', 'Not scored': 'unscored' };
+  function drawTable(el, filter) {
+    const td = (text, cls) => { const c = document.createElement('td'); if (cls) c.className = cls; c.textContent = text ?? ''; return c; };
+    const shown = TASKS.filter(FILTERS[filter] || FILTERS.all);
+    if (!shown.length) {
+      const tr = document.createElement('tr'); const c = td('No tasks match this filter.', 'tb-empty'); c.colSpan = 9;
+      tr.append(c); el.replaceChildren(tr); return;
+    }
+    el.replaceChildren(...shown.map((t) => {
+      const tr = document.createElement('tr');
+      const res = document.createElement('td');
+      const pill = document.createElement('span'); pill.className = 'tb-pill tb-pill-' + (PILL[t.outcome] || 'unscored');
+      const pt = document.createElement('span'); pt.textContent = t.outcome; pill.append(pt); res.append(pill);
+      tr.append(
+        td(t.task, 'tb-task'), res,
+        td(t.run || '—', 'tb-muted'),
+        td(t.steps, 'num'), td(t.agent_minutes, 'num'), td(t.time_limit_minutes, 'num'),
+        td(t.difficulty, 'tb-muted'), td(t.category, 'tb-cat'), td(t.note, 'tb-wrap'),
+      );
+      return tr;
+    }));
+  }
+
+  const waffle = document.getElementById('waffle');
+  const select = document.getElementById('tb-filter');
+  const rows = document.getElementById('task-rows');
+  drawDifficulty(document.getElementById('difficulty'));
+  drawTable(rows, select.value);
+  select.addEventListener('change', () => drawTable(rows, select.value));
+  let lastWidth = -1;
+  new ResizeObserver(() => {
+    if (waffle.clientWidth !== lastWidth) { lastWidth = waffle.clientWidth; drawWaffle(waffle); }
+  }).observe(waffle);
+</script>
+</body>
+</html>
